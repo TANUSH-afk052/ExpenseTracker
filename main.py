@@ -1,3 +1,4 @@
+
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 from tkinter import font as tkFont
@@ -216,24 +217,45 @@ class ExpenseTracker:
         self.refresh_table()
 
     def update_analytics(self):
-        self.ax1.clear()
-        self.ax2.clear()
-        df = pd.read_csv(FILE_NAME)
-        if df.empty:
-            self.canvas.draw()
-            return
+      self.fig.clf()
+      self.ax1 = self.fig.add_subplot(131)  # Pie Chart
+      self.ax2 = self.fig.add_subplot(132)  # Monthly Trend
+      self.ax3 = self.fig.add_subplot(133)  # Weekly Trend
 
-        category_total = df.groupby("Category")["Amount"].sum()
-        self.ax1.pie(category_total, labels=category_total.index, autopct="%1.1f%%")
-        self.ax1.set_title("Category-wise Expense")
+      df = pd.read_csv(FILE_NAME)
+      if df.empty:
+          self.canvas.draw()
+          return
 
-        df["Date"] = pd.to_datetime(df["Date"])
-        monthly = df.groupby(df["Date"].dt.to_period("M"))["Amount"].sum()
-        if not monthly.empty:
-            self.ax2.plot(monthly.index.astype(str), monthly.values, marker="o")
-        self.ax2.set_title("Monthly Spending")
+      df["Date"] = pd.to_datetime(df["Date"])
+      df["Weekday"] = df["Date"].dt.day_name()
+      df["Month"] = df["Date"].dt.to_period("M")
 
-        self.canvas.draw()
+      # Pie Chart - Category-wise
+      category_total = df.groupby("Category")["Amount"].sum()
+      colors = plt.cm.Set3.colors[:len(category_total)]
+      self.ax1.pie(category_total, labels=category_total.index, autopct="%1.1f%%", startangle=90, colors=colors)
+      self.ax1.set_title("Category-wise Distribution", fontsize=10)
+
+      # Line Chart - Monthly showing
+      monthly = df.groupby("Month")["Amount"].sum()
+      self.ax2.plot(monthly.index.astype(str), monthly.values, marker="o", linestyle='-', color="#3498db")
+      self.ax2.set_title("Monthly Trend", fontsize=10)
+      self.ax2.set_xticklabels(monthly.index.astype(str), rotation=45)
+      self.ax2.grid(True)
+
+      # Bar Chart - Weekly Avg show
+      weekly_avg = df.groupby("Weekday")["Amount"].mean().reindex([
+          "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"
+      ])
+      self.ax3.bar(weekly_avg.index, weekly_avg.values, color="#e67e22")
+      self.ax3.set_title("Avg Spending by Day", fontsize=10)
+      self.ax3.set_xticklabels(weekly_avg.index, rotation=45)
+      self.ax3.grid(axis='y')
+
+      self.fig.tight_layout()
+      self.canvas.draw()
+
 
 if __name__ == "__main__":
     root = tk.Tk()
