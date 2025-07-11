@@ -1,6 +1,5 @@
-
 import tkinter as tk
-from tkinter import ttk, messagebox, filedialog
+from tkinter import ttk, messagebox
 from tkinter import font as tkFont
 import pandas as pd
 from datetime import datetime, timedelta
@@ -18,7 +17,7 @@ if not os.path.exists(FILE_NAME):
 class ExpenseTracker:
     def __init__(self, root):
         self.root = root
-        self.root.title("💰 Expense Tracker")
+        self.root.title("Expense Tracker")
         self.root.geometry("1200x700")
         self.root.configure(bg='#2c3e50')
 
@@ -26,7 +25,7 @@ class ExpenseTracker:
 
         style = ttk.Style()
         style.theme_use('clam')
-        style.configure('TNotebook', background='#34495e')
+        style.configure('TNotebook', background="#1f568c")
         style.configure('TNotebook.Tab', font=('Arial', 11, 'bold'), padding=10)
         style.configure('Treeview', font=('Arial', 10))
         style.configure('Treeview.Heading', font=('Arial', 10, 'bold'))
@@ -34,7 +33,7 @@ class ExpenseTracker:
         self.setup_ui()
 
     def setup_ui(self):
-        title = ttk.Label(self.root, text="💰 Advanced Expense Tracker", font=('Arial', 18, 'bold'), background='#2c3e50', foreground='white')
+        title = ttk.Label(self.root, text=" Expense Tracker", font=('Arial', 18, 'bold'), background="#307cc8", foreground='white')
         title.pack(pady=10)
 
         self.notebook = ttk.Notebook(self.root)
@@ -56,7 +55,7 @@ class ExpenseTracker:
 
     def setup_add_tab(self):
         frame = tk.Frame(self.add_tab, bg='#34495e')
-        frame.pack(pady=20)
+        frame.pack(pady=30)
 
         self.date_var = tk.StringVar()
         self.amount_var = tk.StringVar()
@@ -119,7 +118,7 @@ class ExpenseTracker:
         self.total_label.pack(pady=5)
 
     def setup_analytics_tab(self):
-        self.fig, (self.ax1, self.ax2) = plt.subplots(1, 2, figsize=(10, 5))
+        self.fig, (self.ax1, self.ax2, self.ax3) = plt.subplots(1, 3, figsize=(14, 5))
         self.canvas = FigureCanvasTkAgg(self.fig, self.analytics_tab)
         self.canvas.get_tk_widget().pack(fill='both', expand=True)
 
@@ -217,45 +216,44 @@ class ExpenseTracker:
         self.refresh_table()
 
     def update_analytics(self):
-      self.fig.clf()
-      self.ax1 = self.fig.add_subplot(131)  # Pie Chart
-      self.ax2 = self.fig.add_subplot(132)  # Monthly Trend
-      self.ax3 = self.fig.add_subplot(133)  # Weekly Trend
+        self.fig.clf()
+        self.ax1 = self.fig.add_subplot(131)
+        self.ax2 = self.fig.add_subplot(132)
+        self.ax3 = self.fig.add_subplot(133)
 
-      df = pd.read_csv(FILE_NAME)
-      if df.empty:
-          self.canvas.draw()
-          return
+        df = pd.read_csv(FILE_NAME)
+        if df.empty:
+            self.canvas.draw()
+            return
 
-      df["Date"] = pd.to_datetime(df["Date"])
-      df["Weekday"] = df["Date"].dt.day_name()
-      df["Month"] = df["Date"].dt.to_period("M")
+        df["Date"] = pd.to_datetime(df["Date"])
+        df["Weekday"] = df["Date"].dt.day_name()
+        df["Month"] = df["Date"].dt.to_period("M")
+        #Creating Charts with matplotlib
+        # Pie Chart - Category-wise
+        category_total = df.groupby("Category")["Amount"].sum()
+        colors = plt.cm.Set3.colors[:len(category_total)]
+        self.ax1.pie(category_total, labels=category_total.index, autopct="%1.1f%%", startangle=90, colors=colors)
+        self.ax1.set_title("Category-wise Distribution", fontsize=10)
 
-      # Pie Chart - Category-wise
-      category_total = df.groupby("Category")["Amount"].sum()
-      colors = plt.cm.Set3.colors[:len(category_total)]
-      self.ax1.pie(category_total, labels=category_total.index, autopct="%1.1f%%", startangle=90, colors=colors)
-      self.ax1.set_title("Category-wise Distribution", fontsize=10)
+        # Line Chart - Monthly Analysis
+        monthly = df.groupby("Month")["Amount"].sum()
+        self.ax2.plot(monthly.index.astype(str), monthly.values, marker="o", linestyle='-', color="#3498db")
+        self.ax2.set_title("Monthly Trend", fontsize=10)
+        self.ax2.tick_params(axis='x', rotation=45)
+        self.ax2.grid(True)
 
-      # Line Chart - Monthly showing
-      monthly = df.groupby("Month")["Amount"].sum()
-      self.ax2.plot(monthly.index.astype(str), monthly.values, marker="o", linestyle='-', color="#3498db")
-      self.ax2.set_title("Monthly Trend", fontsize=10)
-      self.ax2.set_xticklabels(monthly.index.astype(str), rotation=45)
-      self.ax2.grid(True)
+        # Bar Chart - Weekly Avg
+        weekly_avg = df.groupby("Weekday")["Amount"].mean().reindex([
+            "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"
+        ])
+        self.ax3.bar(weekly_avg.index, weekly_avg.values, color="#e67e22")
+        self.ax3.set_title("Avg Spending by Day", fontsize=10)
+        self.ax3.tick_params(axis='x', rotation=45)
+        self.ax3.grid(axis='y')
 
-      # Bar Chart - Weekly Avg show
-      weekly_avg = df.groupby("Weekday")["Amount"].mean().reindex([
-          "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"
-      ])
-      self.ax3.bar(weekly_avg.index, weekly_avg.values, color="#e67e22")
-      self.ax3.set_title("Avg Spending by Day", fontsize=10)
-      self.ax3.set_xticklabels(weekly_avg.index, rotation=45)
-      self.ax3.grid(axis='y')
-
-      self.fig.tight_layout()
-      self.canvas.draw()
-
+        self.fig.tight_layout()
+        self.canvas.draw()
 
 if __name__ == "__main__":
     root = tk.Tk()
