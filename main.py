@@ -30,6 +30,8 @@ class ExpenseTracker:
         style.configure('Treeview', font=('Arial', 10))
         style.configure('Treeview.Heading', font=('Arial', 10, 'bold'))
 
+        plt.style.use("dark_background")
+
         self.setup_ui()
 
     def setup_ui(self):
@@ -70,7 +72,8 @@ class ExpenseTracker:
         tk.Entry(frame, textvariable=self.amount_var).grid(row=1, column=1, padx=10)
 
         tk.Label(frame, text="Category:", bg='#34495e', fg='white').grid(row=0, column=2, padx=10, pady=5)
-        ttk.Combobox(frame, textvariable=self.category_var, values=["Food", "Transport", "Shopping", "Other"]).grid(row=1, column=2, padx=10)
+        self.category_combo = ttk.Combobox(frame, textvariable=self.category_var, values=["Food", "Transport", "Shopping", "Other"], postcommand=self.update_categories)
+        self.category_combo.grid(row=1, column=2, padx=10)
 
         tk.Label(frame, text="Note:", bg='#34495e', fg='white').grid(row=0, column=3, padx=10, pady=5)
         tk.Entry(frame, textvariable=self.note_var, width=25).grid(row=1, column=3, padx=10)
@@ -90,7 +93,8 @@ class ExpenseTracker:
         self.to_date = DateEntry(filter_frame, width=12)
 
         ttk.Label(filter_frame, text="Category:", background='#34495e', foreground='white').pack(side='left', padx=5)
-        ttk.Combobox(filter_frame, textvariable=self.filter_var, values=["All", "Food", "Transport", "Shopping", "Other"]).pack(side='left')
+        self.filter_combo = ttk.Combobox(filter_frame, textvariable=self.filter_var)
+        self.filter_combo.pack(side='left')
 
         ttk.Label(filter_frame, text="From:", background='#34495e', foreground='white').pack(side='left', padx=5)
         self.from_date.pack(side='left')
@@ -104,7 +108,10 @@ class ExpenseTracker:
         self.tree = ttk.Treeview(self.view_tab, columns=["Date", "Category", "Amount", "Note"], show="headings")
         for col in ["Date", "Category", "Amount", "Note"]:
             self.tree.heading(col, text=col)
-        self.tree.column("Amount", width=100)
+        self.tree.column("Date", width=100)
+        self.tree.column("Category", width=120)
+        self.tree.column("Amount", width=100, anchor='e')
+        self.tree.column("Note", width=300)
         self.tree.pack(fill='both', expand=True, pady=10)
         self.tree.bind('<Double-1>', lambda e: self.edit_expense())
 
@@ -122,6 +129,11 @@ class ExpenseTracker:
         self.canvas = FigureCanvasTkAgg(self.fig, self.analytics_tab)
         self.canvas.get_tk_widget().pack(fill='both', expand=True)
 
+    def update_categories(self):
+        df = pd.read_csv(FILE_NAME)
+        categories = df["Category"].dropna().unique().tolist()
+        self.category_combo['values'] = sorted(set(categories + ["Food", "Transport", "Shopping", "Other"]))
+
     def add_expense(self):
         date = self.date_entry.get()
         category = self.category_var.get()
@@ -132,10 +144,10 @@ class ExpenseTracker:
             messagebox.showerror("Error", "Enter valid amount")
             return
 
-        df = pd.read_csv(FILE_NAME)
+        df = pd.read_csv(FILE_NAME, parse_dates=["Date"])
         new = pd.DataFrame([[date, category, amount, note]], columns=df.columns)
         df = pd.concat([df, new], ignore_index=True)
-        df.to_csv(FILE_NAME, index=False)
+        df.to_csv(FILE_NAME, index=False, float_format="%.2f")
         self.clear_form()
         self.refresh_table()
         self.update_analytics()
@@ -144,8 +156,8 @@ class ExpenseTracker:
         for row in self.tree.get_children():
             self.tree.delete(row)
 
-        df = pd.read_csv(FILE_NAME)
-        df["Date"] = pd.to_datetime(df["Date"])
+        df = pd.read_csv(FILE_NAME, parse_dates=["Date"])
+        df.sort_values("Date", ascending=False, inplace=True)
 
         if self.filter_var.get() != "All":
             df = df[df["Category"] == self.filter_var.get()]
@@ -161,7 +173,13 @@ class ExpenseTracker:
         for _, row in df.iterrows():
             total += row["Amount"]
             self.tree.insert("", "end", values=[row["Date"].strftime("%Y-%m-%d"), row["Category"], f"₹{row['Amount']:.2f}", row["Note"]])
-        self.total_label.config(text=f"Total: ₹{total:.2f}")
+
+        count = len(df)
+        average = total / count if count else 0
+        self.total_label.config(text=f"Total: ₹{total:.2f}   |   Entries: {count}   |   Avg: ₹{average:.2f}")
+
+        categories = ["All"] + df["Category"].dropna().unique().tolist()
+        self.filter_combo['values'] = sorted(categories)
 
     def delete_expense(self):
         selected = self.tree.selection()
@@ -173,7 +191,7 @@ class ExpenseTracker:
         df = df[~((df["Date"] == values[0]) & (df["Category"] == values[1]) &
                   (df["Amount"] == float(str(values[2]).replace("₹", ""))) &
                   (df["Note"] == values[3]))]
-        df.to_csv(FILE_NAME, index=False)
+        df.to_csv(FILE_NAME, index=False, float_format="%.2f")
         self.refresh_table()
         self.update_analytics()
 
@@ -194,8 +212,33 @@ class ExpenseTracker:
         self.notebook.select(self.add_tab)
 
     def update_expense(self):
-        self.delete_expense()
-        self.add_expense()
+        if not self.selected_item:
+            return
+
+        date = self.date_entry.get()
+        category = self.category_var.get()
+        note = self.note_var.get()
+
+        try:
+            amount = float(self.amount_var.get())
+        except:
+            messagebox.showerror("Error", "Enter valid amount")
+            return
+
+        df = pd.read_csv(FILE_NAME)
+        old = self.selected_item
+
+        idx = df[(df["Date"] == old[0]) & (df["Category"] == old[1]) &
+                 (df["Amount"] == float(str(old[2]).replace("₹", ""))) &
+                 (df["Note"] == old[3])].index
+
+        if not idx.empty:
+            df.loc[idx[0]] = [date, category, amount, note]
+            df.to_csv(FILE_NAME, index=False, float_format="%.2f")
+
+        self.clear_form()
+        self.refresh_table()
+        self.update_analytics()
         self.cancel_edit()
 
     def cancel_edit(self):
@@ -211,7 +254,7 @@ class ExpenseTracker:
 
     def clear_filters(self):
         self.filter_var.set("All")
-        self.from_date.set_date(datetime.now() - timedelta(days=180))
+        self.from_date.set_date(datetime.now() - timedelta(days=30))
         self.to_date.set_date(datetime.now())
         self.refresh_table()
 
@@ -229,24 +272,20 @@ class ExpenseTracker:
         df["Date"] = pd.to_datetime(df["Date"])
         df["Weekday"] = df["Date"].dt.day_name()
         df["Month"] = df["Date"].dt.to_period("M")
-        #Creating Charts with matplotlib
-        # Pie Chart - Category-wise
+
         category_total = df.groupby("Category")["Amount"].sum()
         colors = plt.cm.Set3.colors[:len(category_total)]
         self.ax1.pie(category_total, labels=category_total.index, autopct="%1.1f%%", startangle=90, colors=colors)
         self.ax1.set_title("Category-wise Distribution", fontsize=10)
 
-        # Line Chart - Monthly Analysis
         monthly = df.groupby("Month")["Amount"].sum()
         self.ax2.plot(monthly.index.astype(str), monthly.values, marker="o", linestyle='-', color="#3498db")
         self.ax2.set_title("Monthly Trend", fontsize=10)
         self.ax2.tick_params(axis='x', rotation=45)
         self.ax2.grid(True)
 
-        # Bar Chart - Weekly Avg
         weekly_avg = df.groupby("Weekday")["Amount"].mean().reindex([
-            "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"
-        ])
+            "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"])
         self.ax3.bar(weekly_avg.index, weekly_avg.values, color="#e67e22")
         self.ax3.set_title("Avg Spending by Day", fontsize=10)
         self.ax3.tick_params(axis='x', rotation=45)
